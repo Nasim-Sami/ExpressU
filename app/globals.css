@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+/*
+ * ExpressU design tokens.
+ *
+ * We borrow LinkedIn's LAYOUT — three columns, cards, a persistent top nav — because it
+ * is familiar and reads as a serious place for serious ideas. We borrow none of its
+ * IDENTITY. Corporate blue on cool grey says "prove your worth"; warm paper, a marigold
+ * accent and a written-looking serif say "say the thing you've been carrying around".
+ *
+ * Contrast ratios below were computed, not eyeballed. Every pairing marked ✓ meets
+ * WCAG AA. If you change a colour, recompute — an inspiring palette that a partially
+ * sighted 14-year-old cannot read is not inspiring.
+ */
+
+@theme {
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1rem;
+  --radius-field: 0.75rem;
+}
+
+/*
+ * One palette, both themes, via light-dark(). The two values sit on the same line, which
+ * is the point: this file previously carried the dark palette twice — once for the media
+ * query and once for the explicit toggle — and any colour changed in one place and not
+ * the other would silently drift. `color-scheme` below is the only thing the toggle
+ * touches.
+ *
+ * Every ratio marked ✓ was computed, not eyeballed. Recompute if you change one: a
+ * palette a partially sighted 14-year-old cannot read is not an inspiring palette.
+ */
+:root {
+  /* Default: follow the system. The toggle narrows this to one or the other. */
+  color-scheme: light dark;
+
+  /* Ground: paper with a little sky mixed into it — open air behind the icon pattern,
+     still light enough that body text lands above 15:1. */
+  --paper: light-dark(#eef3f7, #1a1e22);
+  --surface: light-dark(#ffffff, #23282d);
+  --surface-sunken: light-dark(#e6edf3, #1f2429);
+
+  --ink: light-dark(#1c1917, #faf9f7); /* 15.7:1 / 15.9:1 ✓ */
+  --ink-muted: light-dark(#4d5560, #a3adb8); /* 6.8:1 / 7.4:1 ✓ */
+  --ink-faint: light-dark(#6b7480, #8b95a1); /* decorative / large text only */
+
+  --line: light-dark(#d8e2ea, #333a41);
+  --line-strong: light-dark(#c2d0dc, #454e56);
+
+  /* Marigold — primary actions, and the warm counterweight to the cool ground.
+     Deliberately deeper than amber-600 in light mode: that shade is prettier and fails
+     AA at 3.3:1. This one is 5.4:1 on the paper ✓, 6.0:1 under white button text ✓,
+     and 8.3:1 in dark ✓ */
+  --accent: light-dark(#a04a08, #f5a623);
+  --accent-hover: light-dark(#823c06, #fbbf24);
+  --accent-soft: light-dark(#fdf0e0, #33281a);
+  --on-accent: light-dark(#ffffff, #1a1e22);
+
+  /* Coral — the Love heart. Non-text, so 3:1 is the bar; `strong` is for when it
+     carries a label and needs 4.5:1. */
+  --love: light-dark(#e8607a, #f27a91); /* 6.4:1 in dark ✓ */
+  --love-strong: light-dark(#b03b54, #f9a8b8); /* 5.2:1 in light ✓ */
+  --love-soft: light-dark(#fdeef1, #34222a);
+
+  /* Sprout green — growth, journal entries, the timeline. */
+  --growth: light-dark(#3f6b53, #8fbf8a); /* 5.5:1 / 8.0:1 ✓ */
+  --growth-soft: light-dark(#e4efe8, #222d24);
+
+  --focus: light-dark(#1d4ed8, #93c5fd);
+
+  /* How strongly the background icon pattern shows through. Lower in dark, where a
+     light-on-dark texture reads much louder at the same opacity. */
+  --pattern-opacity: light-dark(0.13, 0.085);
+
+  --shadow-card: light-dark(
+    0 1px 2px rgb(20 30 40 / 0.05),
+    0 1px 2px rgb(0 0 0 / 0.3)
+  ),
+  light-dark(0 4px 16px rgb(20 30 40 / 0.06), 0 4px 16px rgb(0 0 0 / 0.25));
+}
+
+/* The explicit toggle wins over the system preference, in both directions. Because the
+   palette is written with light-dark(), pinning color-scheme is all it has to do. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--line);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* Roomier than a feed of job posts. Ideas deserve air. */
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * The things you can do here, scattered small across the whole page.
+ *
+ * A fixed, non-scrolling layer so the page moves over the texture rather than dragging
+ * it along — and `pointer-events: none` so it can never intercept a tap. It sits behind
+ * every card because content is what should be looked at; the pattern is only there to
+ * make the empty parts of the page feel like somewhere rather than nowhere.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("/pattern.svg");
+  background-repeat: repeat;
+  background-size: 300px 300px;
+  opacity: var(--pattern-opacity);
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+/* A visible focus ring everywhere — this platform is keyboard-navigable by default,
+   not as a later accessibility retrofit. */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- shared primitives -------------------------------------------------
+ *
+ * These live in @layer components so Tailwind's utilities still win over them.
+ * Outside a layer, `.eu-btn { display: inline-flex }` beats a `hidden` utility and
+ * silently defeats every responsive show/hide on a button.
+ */
+@layer components {
+
+.eu-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.eu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  /* 44px min target — thumbs, not cursors. */
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.eu-btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.eu-btn-primary:hover {
+  background: var(--accent-hover);
+}
+.eu-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.eu-btn-quiet {
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+}
+.eu-btn-quiet:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+.eu-field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  padding: 0.75rem 0.9rem;
+  color: var(--ink);
+  font-size: 1rem;
+}
+.eu-field::placeholder {
+  color: var(--ink-faint);
+}
+.eu-field:focus {
+  border-color: var(--accent);
+}
+
+/* The Love heart: a soft bloom, never a counter ticking up. */
+@keyframes eu-bloom {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.28);
+  }
+  70% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.eu-bloom {
+  animation: eu-bloom 0.45s ease-out;
+}
+
+/* An Echo travelling outward — the idea goes somewhere, nothing increments. */
+@keyframes eu-ripple {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+.eu-ripple {
+  animation: eu-ripple 0.7s ease-out forwards;
+}
+
+.eu-skip-link {
+  position: absolute;
+  left: -9999px;
+}
+.eu-skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-field);
+  box-shadow: var(--shadow-card);
+}
+
+}

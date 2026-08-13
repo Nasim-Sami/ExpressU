@@ -1,0 +1,482 @@
+// ExpressU data model.
+//
+// READ THIS BEFORE ADDING A COLUMN.
+//
+// Three things are deliberately absent from this schema, and their absence IS the product:
+//
+//   1. No `loveCount` / `viewCount` denormalised anywhere. Counts are derived, and only
+//      ever shown to the author of the post. A cached count on Post is one careless
+//      `select` away from becoming a public scoreboard.
+//   2. No `caption` / `comment` / `note` on Echo. A share carries the idea and nothing
+//      else, so no one can attach a verdict to someone else's work on its way out.
+//   3. No comment table of any kind. There is no "disabled" flag to flip back on.
+//
+// If a future feature seems to need one of these, it is the feature that is wrong.
+//
+// Dev runs on SQLite, which has no native enum or array support, so enum-ish columns are
+// Strings and list-ish columns are JSON text. The single source of truth for their allowed
+// values is lib/constants.ts — always go through the helpers there, never a bare string.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String  @id @default(cuid())
+  handle       String  @unique
+  displayName  String
+  email        String  @unique
+  passwordHash String
+  /// The cropped versions, used everywhere the picture is displayed.
+  avatarKey String?
+  coverKey  String?
+
+  /// The pictures as uploaded, before framing.
+  ///
+  /// Kept so that tapping someone's photo shows the whole thing rather than the square
+  /// it was cut down to — a profile picture that opens "already zoomed in" is just the
+  /// crop, blown up — and so an author can re-frame later without hunting for the
+  /// original file again.
+  avatarOriginalKey String?
+  coverOriginalKey  String?
+
+  bio String?
+
+  // Birth year only — we never need a full date of birth, so we never ask for one.
+  // Drives whether encouragement notes are preset-only (under 16) or free text.
+  birthYear Int?
+
+  /// Links the author chose to put on their profile, as a JSON array of
+  /// `{ label, url }`. Stored as JSON rather than its own table because these are
+  /// always read with the user, never queried on their own, and capped at a handful.
+  /// Validation lives in lib/links.ts — nothing writes here without going through it.
+  links String?
+
+  role   String @default("MEMBER") // MEMBER | ADMIN
+  status String @default("ACTIVE") // ACTIVE | SUSPENDED
+
+  suspendedUntil DateTime?
+  createdAt      DateTime  @default(now())
+
+  posts                Post[]
+  loves                Love[]
+  echoes               Echo[]
+  encouragementsSent   Encouragement[] @relation("EncouragementFrom")
+  connectionsRequested Connection[]    @relation("ConnectionRequester")
+  connectionsReceived  Connection[]    @relation("ConnectionAddressee")
+  strikes              Strike[]
+  suspensions          Suspension[]    @relation("SuspensionSubject")
+  suspensionsApproved  Suspension[]    @relation("SuspensionApprover")
+  reportsFiled         Report[]
+  bookReportsFiled     BookReport[]
+  books                Book[]
+  notifications        Notification[]
+
+  @@index([handle])
+}
+
+/// A Post is a container that GROWS. It is never a single frozen thing — Entries are
+/// appended to it over time, so a dream, a hobby, a letter or a piece of learning
+/// visibly evolves instead of dying as a one-off.
+///
+/// The four kinds share this one table on purpose. They differ only in what they're
+/// called and a couple of metadata fields; everything that actually matters — who can
+/// see it, how it's moderated, that it can only be loved and never judged — is
+/// identical, and must stay identical. Four parallel tables would be four places for
+/// those guarantees to drift apart.
+model Post {
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  /// IDEA | HOBBY | LETTER | LEARNING — see POST_KIND in lib/constants.ts.
+  kind String @default("IDEA")
+
+  title String
+
+  /// HOBBY only: which hobby this is about, picked from a list or written in.
+  hobbyName String?
+
+  /// LETTER only: the sort of body being written to (Government, Ministry, …).
+  recipientType String?
+
+  /// PUBLIC | CIRCLE | PRIVATE — the author's choice, always changeable.
+  visibility String @default("PRIVATE")
+
+  /// PENDING | LIVE | BLOCKED | UNDER_REVIEW
+  /// While PENDING the post is visible to its author alone, so nobody waits on a
+  /// spinner to find out whether their work is allowed.
+  moderationStatus String @default("PENDING")
+
+  createdAt   DateTime @default(now())
+  lastEntryAt DateTime @default(now())
+
+  entries        Entry[]
+  loves          Love[]
+  echoes         Echo[]
+  encouragements Encouragement[]
+  reports        Report[]
+
+  @@index([authorId, kind])
+  @@index([moderationStatus, visibility, lastEntryAt])
+}
+
+/// Entry 1 is the original post. Entries 2+ are the journal that grows on top of it.
+/// Called a Chapter, a Memory, a Letter or a Lesson depending on the parent's kind —
+/// see ENTRY_NOUN in lib/constants.ts.
+model Entry {
+  id     String @id @default(cuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  /// The caption / description the author writes.
+  body    String
+  ordinal Int
+
+  /// LETTER only: who this particular letter is addressed to, and its subject line.
+  letterTo      String?
+  letterSubject String?
+
+  /// The author affirmed this is their own work, or that they may share it.
+  originalityAttested Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  /// Any write to the row, Prisma-managed. Deliberately NOT used to decide what needs
+  /// re-moderating: renumbering entries after a delete writes this too, and re-checking
+  /// unchanged content (and labelling it "edited") because its ordinal shifted is wrong
+  /// on both counts.
+  updatedAt DateTime @updatedAt
+
+  /// Set only when the author changes what the entry actually SAYS — body, letter
+  /// fields, or attachments. Null means never edited.
+  contentUpdatedAt DateTime?
+
+  /// When moderation last finished for this entry's current content. The worker claims
+  /// any entry where this is null or older than `contentUpdatedAt`, which is what makes
+  /// an edit get re-checked rather than the post's oldest entry being re-checked
+  /// instead. Without it, "post something harmless, then edit it" walks past the check.
+  moderatedAt DateTime?
+
+  attachments    Attachment[]
+  moderationRuns ModerationRun[]
+  strikes        Strike[]
+
+  @@unique([postId, ordinal])
+  @@index([postId])
+}
+
+model Attachment {
+  id      String @id @default(cuid())
+  entryId String
+  entry   Entry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  /// VIDEO | AUDIO | IMAGE | PDF | DOC | TEXT
+  kind      String
+  filename  String
+  mimeType  String
+  sizeBytes Int
+
+  storageKey String
+  /// Poster frame for video, first-page render for PDF.
+  posterKey  String?
+
+  durationSec Float?
+  pageCount   Int?
+  width       Int?
+  height      Int?
+
+  /// Byte-exact duplicate detection.
+  sha256 String
+  /// Perceptual hash of the visual content — catches re-encoded or trimmed copies.
+  phash  String?
+
+  /// Whisper transcript (audio/video) or extracted body text (PDF/DOC/TEXT).
+  /// Feeds moderation; never rendered publicly.
+  extractedText String?
+
+  /// PENDING | READY | FAILED — media derivation, distinct from moderation.
+  processingStatus String @default("PENDING")
+
+  createdAt DateTime @default(now())
+
+  @@index([entryId])
+  @@index([sha256])
+}
+
+/// The only reaction that exists. There is no counterpart for disapproval,
+/// and there never will be.
+model Love {
+  id     String @id @default(cuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+/// A share. Note what is NOT here: any text field whatsoever. An idea travels
+/// exactly as its author made it.
+model Echo {
+  id     String @id @default(cuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+/// Comments replaced by something that cannot wound: a note only the author reads.
+/// Authors under 16 receive preset phrases only, so no free text can reach a child.
+model Encouragement {
+  id     String @id @default(cuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  fromUserId String
+  fromUser   User   @relation("EncouragementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  presetId String?
+  preset   Preset? @relation(fields: [presetId], references: [id])
+  /// Free text, permitted only when the recipient is 16+.
+  body     String?
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([postId])
+}
+
+model Preset {
+  id      String @id @default(cuid())
+  text    String @unique
+  ordinal Int
+
+  encouragements Encouragement[]
+}
+
+model Connection {
+  id String @id @default(cuid())
+
+  requesterId String
+  requester   User   @relation("ConnectionRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User   @relation("ConnectionAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  /// PENDING | ACCEPTED
+  status String @default("PENDING")
+
+  createdAt DateTime @default(now())
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+}
+
+/// One row per moderation pass, kept in full so a human reviewing a decision sees
+/// the model's actual reasoning rather than a bare label.
+model ModerationRun {
+  id      String @id @default(cuid())
+  entryId String
+  entry   Entry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  /// APPROVED | BLOCKED_EXPLICIT | BLOCKED_REPOSTED | WARNED_IRRELEVANT | NEEDS_REVIEW | ERROR
+  verdict String
+
+  explicitVerdict    String? // none | suspected | present
+  originalityVerdict String? // own_work | unsure | likely_reposted
+  relevanceVerdict   String? // expressive | not_expressive
+
+  /// JSON array of detected signals, e.g. ["tiktok_watermark","burned_in_handle"].
+  signals   String?
+  rationale String?
+  /// The warm one-liner shown to the author when action is taken.
+  gentleNote String?
+
+  /// Which deterministic check fired, if any: sha256 | phash | null.
+  duplicateOf String?
+
+  modelId   String?
+  createdAt DateTime @default(now())
+
+  @@index([entryId])
+}
+
+/// "Consecutive" means: strikes recorded since the author's most recent approved
+/// post. Any approved post clears the slate — see lib/moderation/strikes.ts.
+model Strike {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  entryId String?
+  entry   Entry?  @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  kind String @default("IRRELEVANT")
+
+  createdAt DateTime  @default(now())
+  /// Set when a later approved post resets the counter.
+  clearedAt DateTime?
+
+  @@index([userId, clearedAt])
+}
+
+/// Never created by the moderation worker. Only an admin approving a BAN_CONFIRM
+/// review item writes one of these.
+model Suspension {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("SuspensionSubject", fields: [userId], references: [id], onDelete: Cascade)
+
+  startsAt DateTime @default(now())
+  endsAt   DateTime
+  reason   String
+
+  approvedByAdminId String?
+  approvedByAdmin   User?   @relation("SuspensionApprover", fields: [approvedByAdminId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ReviewItem {
+  id String @id @default(cuid())
+
+  /// BAN_CONFIRM | ORIGINALITY_UNSURE | USER_REPORT | BLOCK_APPEAL
+  kind String
+  /// Id of the User / Entry / Post / Report this item concerns, per kind.
+  subjectId String
+  /// OPEN | RESOLVED
+  status String @default("OPEN")
+
+  /// What the author said when appealing, or admin notes on resolution.
+  notes      String?
+  resolution String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([status, kind])
+}
+
+model Report {
+  id     String @id @default(cuid())
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  reporterId String
+  reporter   User   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  reason String
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, reporterId])
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// LOVED | ENCOURAGED | ECHOED | MILESTONE | MODERATION | CONNECTION
+  kind String
+  /// JSON blob, shape depends on kind.
+  payload String
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+/// A story or book in the reading room.
+///
+/// Separate from Post rather than a sixth kind of one: a book is read rather than
+/// witnessed, it has pages and an author who may not be the uploader, and it carries no
+/// Love and no Echo. Bolting it onto Post would have meant a `kind` that quietly disables
+/// half of what a Post is.
+model Book {
+  id String @id @default(cuid())
+
+  title String
+  /// Who wrote it — which is often not who uploaded it.
+  author String
+  /// A line or two about what it is. Shown under the title in the library.
+  blurb String?
+
+  /// BCP-47-ish: "bn" or "en". Used to pick a reading font and to filter the shelves.
+  language String @default("bn")
+
+  /// Who it is for. Bengali children's books here span roughly 3 to 15.
+  minAge Int @default(3)
+  maxAge Int @default(15)
+
+  /// Cover image, if there is one; the library falls back to a drawn card without it.
+  coverKey String?
+  /// The uploaded file itself, kept so a reader can download the original.
+  sourceKey      String?
+  sourceFilename String?
+  sourceMimeType String?
+
+  /// Null for the books that ship with the platform.
+  uploaderId String?
+  uploader   User?   @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  /// PENDING | LIVE | BLOCKED | UNDER_REVIEW — the same ladder posts use, checked by the
+  /// same moderation pipeline. A book is only readable by anyone other than its uploader
+  /// once it is LIVE.
+  moderationStatus String @default("PENDING")
+  /// When the text was last checked, so an edit can't slip past a completed check.
+  moderatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages   BookPage[]
+  reports BookReport[]
+
+  @@index([moderationStatus])
+  @@index([language, minAge])
+}
+
+model BookPage {
+  id     String @id @default(cuid())
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  /// 1-based, and the number a reader types into "go to page".
+  number Int
+  text   String
+
+  @@unique([bookId, number])
+  @@index([bookId, number])
+}
+
+model BookReport {
+  id     String @id @default(cuid())
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  reporterId String
+  reporter   User   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  /// The reporter's own words. Required, because "what happened" is what an admin needs.
+  reason String
+
+  createdAt DateTime @default(now())
+
+  @@unique([bookId, reporterId])
+}

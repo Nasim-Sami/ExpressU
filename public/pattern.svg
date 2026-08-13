@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <!--
+    The quiet background of ExpressU: the things you can do here, scattered small.
+
+    Twelve glyphs on a 300px tile rather than five on a 150px one — a short repeat reads
+    as wallpaper, and the eye starts following the grid instead of the page. At this size
+    the repetition is hard to spot at a glance.
+
+    It sits at low opacity behind everything (see body::before in globals.css), so it
+    reads as texture rather than decoration. Anything busier competes with the actual work
+    people post, which is the one thing on the page that should be looked at.
+
+    Monochrome and untinted by design — opacity is applied in CSS, so a single file serves
+    both light and dark themes.
+  -->
+  <g fill="none" stroke="#5B7C99" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+
+    <!-- idea: a bulb -->
+    <g transform="translate(18 20) scale(0.92)">
+      <path d="M12 3.2a6 6 0 0 0-3.4 10.9c.5.4.8 1 .8 1.6v.5h5.2v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3.2z"/>
+      <path d="M9.8 19h4.4"/>
+    </g>
+
+    <!-- hobby: a palette -->
+    <g transform="translate(108 14) scale(0.92)">
+      <path d="M12 3.4c-4.8 0-8.6 3.5-8.6 7.9 0 4.3 3.6 7.3 7.4 7.3.9 0 1.5-.6 1.5-1.4 0-.4-.2-.8-.4-1.1-.3-.3-.4-.6-.4-1 0-.8.7-1.4 1.5-1.4h1.8c3.2 0 5.8-2.5 5.8-5.6 0-3.4-3.6-4.7-8.6-4.7z"/>
+      <circle cx="8" cy="10" r="1" fill="#5B7C99" stroke="none"/>
+      <circle cx="12.4" cy="7.6" r="1" fill="#5B7C99" stroke="none"/>
+    </g>
+
+    <!-- learning: an open book -->
+    <g transform="translate(196 24) scale(0.92)">
+      <path d="M12 6.4C10.4 5.2 8.4 4.6 5.6 4.6H3.4v13h2.2c2.8 0 4.8.6 6.4 1.8 1.6-1.2 3.6-1.8 6.4-1.8h2.2v-13h-2.2c-2.8 0-4.8.6-6.4 1.8z"/>
+      <path d="M12 6.4v13"/>
+    </g>
+
+    <!-- open letter: a paper plane -->
+    <g transform="translate(258 88) scale(0.92)">
+      <path d="M20.8 3.6 3.4 10.2l6.2 2.4 2.4 6.2z"/>
+      <path d="M20.8 3.6 9.6 12.6"/>
+    </g>
+
+    <!-- music -->
+    <g transform="translate(64 74) scale(0.92)">
+      <path d="M9 18V6.2l10-2v11.6"/>
+      <circle cx="6.6" cy="18.2" r="2.6"/>
+      <circle cx="16.6" cy="15.8" r="2.6"/>
+    </g>
+
+    <!-- puzzle piece: the games section -->
+    <g transform="translate(150 82) scale(0.92)">
+      <path d="M4 4.6h5.2a2.2 2.2 0 0 1 4.4 0H19v5.2a2.2 2.2 0 0 0 0 4.4V19.4h-5.4a2.2 2.2 0 0 0-4.4 0H4v-5.2a2.2 2.2 0 0 0 0-4.4z"/>
+    </g>
+
+    <!-- camera -->
+    <g transform="translate(20 116) scale(0.92)">
+      <path d="M3.4 8.4h3.8l1.6-2.6h6.4l1.6 2.6h3.8v10.2H3.4z"/>
+      <circle cx="12" cy="13.2" r="3.4"/>
+    </g>
+
+    <!-- sprout: the mark itself, tying the pattern to the logo -->
+    <g transform="translate(238 158) scale(0.92)">
+      <path d="M12 20V11"/>
+      <path d="M12 15.4c-3-.1-5.3-2.3-5.5-5.2 3-.3 5.3 1.9 5.5 5.2z"/>
+      <path d="M12 12.3c.2-3.5 2.7-6.2 6-6.3.2 3.5-2.5 6.2-6 6.3z"/>
+    </g>
+
+    <!-- a ball: sport -->
+    <g transform="translate(96 168) scale(0.92)">
+      <circle cx="12" cy="12" r="8.6"/>
+      <path d="m12 6.4 4.2 3-1.6 5h-5.2l-1.6-5z"/>
+    </g>
+
+    <!-- pencil: writing and drawing -->
+    <g transform="translate(174 196) scale(0.92)">
+      <path d="M4 20h4l10.6-10.6a2.4 2.4 0 0 0-3.4-3.4L4.6 16.6z"/>
+      <path d="m14.4 7.4 3.4 3.4"/>
+    </g>
+
+    <!-- a die: puzzles and games -->
+    <g transform="translate(38 214) scale(0.92)">
+      <rect x="4" y="4" width="16" height="16" rx="3.4"/>
+      <circle cx="9" cy="9" r="1.2" fill="#5B7C99" stroke="none"/>
+      <circle cx="15" cy="15" r="1.2" fill="#5B7C99" stroke="none"/>
+    </g>
+
+    <!-- a heart: the only reaction there is -->
+    <g transform="translate(262 240) scale(0.92)">
+      <path d="M12 20.2s-7.6-4.6-7.6-9.4a4.2 4.2 0 0 1 7.6-2.4 4.2 4.2 0 0 1 7.6 2.4c0 4.8-7.6 9.4-7.6 9.4z"/>
+    </g>
+
+    <!-- a star: not a rating, just a small bright thing -->
+    <g transform="translate(140 250) scale(0.8)">
+      <path d="m12 4.4 2.3 5 5.3.6-4 3.6 1.1 5.3-4.7-2.8-4.7 2.8 1.1-5.3-4-3.6 5.3-.6z"/>
+    </g>
+  </g>
+</svg>
