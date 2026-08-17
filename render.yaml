@@ -2,31 +2,43 @@ services:
   - type: web
     name: expressu
     runtime: node
-    plan: starter # persistent disks require a paid plan — Free won't work
+    plan: free # no disk needed any more — Postgres and media both live off-instance
     region: oregon
     branch: main
     buildCommand: npm ci && npx prisma generate && npm run build
-    # Runs after build, before the new deploy takes traffic. Creates/updates the
-    # SQLite schema on the persistent disk. Deliberately does NOT pass
-    # --accept-data-loss: if a future schema change would drop data, this should
-    # fail loudly and block the deploy rather than silently destroy anything.
-    # Never run "npm run db:seed" here — the seed script creates fake accounts
-    # and is dev-only.
+    # Runs after build, before the new deploy takes traffic. Reconciles the schema
+    # against the Postgres database at DATABASE_URL (Neon or Supabase). Deliberately
+    # does NOT pass --accept-data-loss: if a future schema change would drop data,
+    # this should fail loudly and block the deploy rather than silently destroy
+    # anything. Never run "npm run db:seed" here — the seed script creates fake
+    # accounts and is dev-only.
     preDeployCommand: npx prisma db push --skip-generate
     # Backgrounds the moderation worker, keeps "next start" as the process Render
     # supervises for health checks and restarts. If the worker crashes it will NOT
     # auto-restart on its own — see README note on this in the deploy instructions.
     startCommand: sh -c "npm run worker & exec npm run start"
     healthCheckPath: /
-    disk:
-      name: expressu-data
-      mountPath: /var/data
-      sizeGB: 10
+    # No `disk:` block — the instance is stateless. The database lives on Neon or
+    # Supabase (DATABASE_URL below) and media lives in an S3-compatible bucket
+    # (S3_* below), so a redeploy, restart, or scale-to-zero loses nothing. Set the
+    # values below in the Render dashboard rather than committing them here.
     envVars:
       - key: DATABASE_URL
-        value: file:/var/data/app.db
-      - key: STORAGE_DIR
-        value: /var/data/storage
+        sync: false # Neon or Supabase Postgres connection string
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false # e.g. https://<project-ref>.supabase.co/storage/v1/s3
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
       - key: SESSION_SECRET
         generateValue: true
       - key: ANTHROPIC_API_KEY

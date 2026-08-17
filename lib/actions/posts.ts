@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getSessionUser, isSuspended } from "@/lib/auth";
+import { scheduleEntryCheck } from "@/lib/moderation/schedule";
 import { db } from "@/lib/db";
 import * as storage from "@/lib/storage";
 import {
@@ -56,7 +57,20 @@ function kindFor(mimeType: string, filename: string): AttachmentKind {
   return "DOC";
 }
 
-async function saveFiles(entryId: string, files: File[], alreadyCount = 0): Promise<string | null> {
+/**
+ * Where a batch of uploads belongs: an entry, or an interview answer.
+ *
+ * Exported so answers go through this exact function rather than a copy of it. Uploads
+ * are where the hashing, the size cap and the moderation hand-off live; a second
+ * implementation for answers would be a second place for those to quietly diverge.
+ */
+export type AttachmentOwner = { entryId: string } | { responseId: string };
+
+export async function saveFiles(
+  owner: AttachmentOwner,
+  files: File[],
+  alreadyCount = 0,
+): Promise<string | null> {
   let index = alreadyCount;
   for (const file of files) {
     if (file.size === 0) continue;
@@ -71,7 +85,7 @@ async function saveFiles(entryId: string, files: File[], alreadyCount = 0): Prom
 
     await db.attachment.create({
       data: {
-        entryId,
+        ...owner,
         kind: kindFor(file.type, file.name),
         filename: file.name,
         mimeType: file.type || "application/octet-stream",
@@ -231,11 +245,15 @@ export async function createPost(
     },
   });
 
-  const fileError = await saveFiles(entry.id, files);
+  const fileError = await saveFiles({ entryId: entry.id }, files);
   if (fileError) {
     await db.post.delete({ where: { id: post.id } });
     return { error: fileError };
   }
+
+  // Checked straight after this response goes out, so the post reaches the feed on its
+  // own without a separate worker process having to be running.
+  scheduleEntryCheck(entry.id, user.id);
 
   revalidatePath("/");
   redirect(`/post/${post.id}`);
@@ -301,7 +319,7 @@ export async function addEntry(
     },
   });
 
-  const fileError = await saveFiles(entry.id, files);
+  const fileError = await saveFiles({ entryId: entry.id }, files);
   if (fileError) {
     await db.entry.delete({ where: { id: entry.id } });
     return { error: fileError };
@@ -312,6 +330,8 @@ export async function addEntry(
     where: { id: postId },
     data: { lastEntryAt: new Date(), moderationStatus: "PENDING" },
   });
+
+  scheduleEntryCheck(entry.id, user.id);
 
   revalidatePath(`/post/${postId}`);
   redirect(`/post/${postId}`);
@@ -375,7 +395,7 @@ export async function editEntry(
   if (removeIds.length > 0) await purgeAttachments(entryId, removeIds);
 
   if (hasNewFiles) {
-    const fileError = await saveFiles(entryId, files, Math.max(0, remaining));
+    const fileError = await saveFiles({ entryId: entryId }, files, Math.max(0, remaining));
     if (fileError) return { error: fileError };
   }
 
@@ -391,6 +411,9 @@ export async function editEntry(
     where: { id: entry.post.id },
     data: { moderationStatus: "PENDING" },
   });
+
+  // An edit is unchecked content again, so it is re-checked the same way.
+  scheduleEntryCheck(entry.id, user.id);
 
   revalidatePath(`/post/${entry.post.id}`);
   redirect(`/post/${entry.post.id}`);

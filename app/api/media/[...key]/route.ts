@@ -17,6 +17,38 @@ import type { ModerationStatus, Visibility } from "@/lib/constants";
  * the page around it.
  */
 
+export function parseRangeHeader(range: string, size: number): { start: number; end: number } | null {
+  if (size <= 0) return null;
+
+  const trimmed = range.trim();
+  const match = /^bytes=(\d*)-(\d*)$/.exec(trimmed);
+  if (!match) return null;
+
+  const startText = match[1];
+  const endText = match[2];
+
+  if (startText === "" && endText === "") return null;
+
+  if (startText !== "") {
+    const start = Number(startText);
+    const end = endText === "" ? size - 1 : Number(endText);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= size || end >= size || start > end) {
+      return null;
+    }
+
+    return { start, end };
+  }
+
+  // Suffix ranges like `bytes=-200` mean "last 200 bytes".
+  const suffixLength = Number(endText);
+  if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
+
+  const start = Math.max(size - suffixLength, 0);
+  const end = size - 1;
+  return { start, end };
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ key: string[] }> },
@@ -40,16 +72,50 @@ export async function GET(
           },
         },
       },
+      // An interview answer's media. Gated separately below, because an answer is
+      // somebody else's file living on the interviewer's page — being allowed to read
+      // the interview is not by itself permission to read every answer to it.
+      response: {
+        select: {
+          authorId: true,
+          moderationStatus: true,
+          question: {
+            select: {
+              entry: {
+                select: {
+                  post: {
+                    select: { authorId: true, visibility: true, moderationStatus: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
   if (attachment) {
-    const post = attachment.entry.post;
-    const allowed = canView(viewer, {
+    // Exactly one of these is ever set — see the Attachment model.
+    const post = attachment.entry?.post ?? attachment.response?.question.entry.post;
+    if (!post) return new NextResponse("Not found", { status: 404 });
+
+    let allowed = canView(viewer, {
       authorId: post.authorId,
       visibility: post.visibility as Visibility,
       moderationStatus: post.moderationStatus as ModerationStatus,
     });
+
+    if (allowed && attachment.response) {
+      const answer = attachment.response;
+      // Its own author always sees their own answer, in every state. Everyone else waits
+      // until it has passed its own moderation pass, and never sees it if either of them
+      // has blocked the other.
+      const isAnswerAuthor = viewer?.id === answer.authorId;
+      allowed =
+        isAnswerAuthor ||
+        (answer.moderationStatus === "LIVE" && !viewer?.blockedIds.has(answer.authorId));
+    }
 
     // 404 rather than 403: a "forbidden" would confirm the file exists, which itself
     // leaks something about a private post.
@@ -107,20 +173,12 @@ async function serve(key: string, contentType: string, request: Request) {
   const range = request.headers.get("range");
 
   if (range) {
-    const match = /bytes=(\d*)-(\d*)/.exec(range);
-    if (match) {
-      const start = match[1] ? Number(match[1]) : 0;
-      const end = match[2] ? Number(match[2]) : info.size - 1;
+    const parsedRange = parseRangeHeader(range, info.size);
+    if (parsedRange) {
+      const { start, end } = parsedRange;
 
-      if (start >= info.size || end >= info.size || start > end) {
-        return new NextResponse("Range not satisfiable", {
-          status: 416,
-          headers: { "Content-Range": `bytes */${info.size}` },
-        });
-      }
-
-      const stream = storage.readStream(key, { start, end });
-      return new NextResponse(stream as unknown as ReadableStream, {
+      const stream = await storage.readStream(key, { start, end });
+      return new NextResponse(stream, {
         status: 206,
         headers: {
           "Content-Type": contentType,
@@ -132,10 +190,17 @@ async function serve(key: string, contentType: string, request: Request) {
         },
       });
     }
+
+    if (range.trim().startsWith("bytes=")) {
+      return new NextResponse("Range not satisfiable", {
+        status: 416,
+        headers: { "Content-Range": `bytes */${info.size}` },
+      });
+    }
   }
 
-  const stream = storage.readStream(key);
-  return new NextResponse(stream as unknown as ReadableStream, {
+  const stream = await storage.readStream(key);
+  return new NextResponse(stream, {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(info.size),

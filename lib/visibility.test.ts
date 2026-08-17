@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ModerationStatus, Visibility } from "./constants";
 import { MODERATION_STATUS, VISIBILITY } from "./constants";
 import {
+  canSeePerson,
   canView,
   canViewForReview,
   visiblePostWhere,
@@ -12,10 +13,30 @@ import {
 
 const AUTHOR = "user_author";
 
-const author: Viewer = { id: AUTHOR, role: "MEMBER", connectionIds: new Set() };
-const friend: Viewer = { id: "user_friend", role: "MEMBER", connectionIds: new Set([AUTHOR]) };
-const stranger: Viewer = { id: "user_stranger", role: "MEMBER", connectionIds: new Set() };
-const adminStranger: Viewer = { id: "user_admin", role: "ADMIN", connectionIds: new Set() };
+const author: Viewer = {
+  id: AUTHOR,
+  role: "MEMBER",
+  connectionIds: new Set(),
+  blockedIds: new Set(),
+};
+const friend: Viewer = {
+  id: "user_friend",
+  role: "MEMBER",
+  connectionIds: new Set([AUTHOR]),
+  blockedIds: new Set(),
+};
+const stranger: Viewer = {
+  id: "user_stranger",
+  role: "MEMBER",
+  connectionIds: new Set(),
+  blockedIds: new Set(),
+};
+const adminStranger: Viewer = {
+  id: "user_admin",
+  role: "ADMIN",
+  connectionIds: new Set(),
+  blockedIds: new Set(),
+};
 const loggedOut = null;
 
 const viewers = [
@@ -114,6 +135,11 @@ function matchesWhere(where: Record<string, unknown>, subject: ViewablePost): bo
       return condition.some((clause) => matchesWhere(clause as Record<string, unknown>, subject));
     }
 
+    if (key === "AND") {
+      if (!Array.isArray(condition)) throw new Error("AND must be an array");
+      return condition.every((clause) => matchesWhere(clause as Record<string, unknown>, subject));
+    }
+
     const actual = subject[key as keyof ViewablePost];
 
     if (typeof condition === "string") return actual === condition;
@@ -122,6 +148,12 @@ function matchesWhere(where: Record<string, unknown>, subject: ViewablePost): bo
       const list = (condition as { in: unknown }).in;
       if (!Array.isArray(list)) throw new Error("`in` must be an array");
       return list.includes(actual);
+    }
+
+    if (condition && typeof condition === "object" && "notIn" in condition) {
+      const list = (condition as { notIn: unknown }).notIn;
+      if (!Array.isArray(list)) throw new Error("`notIn` must be an array");
+      return !list.includes(actual);
     }
 
     throw new Error(`Unsupported where condition for "${key}": ${JSON.stringify(condition)}`);
@@ -145,4 +177,111 @@ describe("visiblePostWhere agrees with canView on every combination", () => {
       }
     }
   }
+});
+
+/* ── Blocking ──────────────────────────────────────────────────────────────────── */
+
+describe("blocking hides people in both directions", () => {
+  const OTHER = "user_other";
+
+  /** Someone who blocked OTHER, or was blocked by them — the Viewer is identical either way. */
+  const blocker: Viewer = {
+    id: "user_blocker",
+    role: "MEMBER",
+    connectionIds: new Set(),
+    blockedIds: new Set([OTHER]),
+  };
+
+  const post = (visibility: Visibility): ViewablePost => ({
+    authorId: OTHER,
+    visibility,
+    moderationStatus: "LIVE",
+  });
+
+  it("hides a blocked person's PUBLIC post, which nothing else does", () => {
+    // The whole point: public is normally visible to everyone, so this is the case that
+    // proves the block outranks visibility rather than merely agreeing with it.
+    expect(canView(stranger, post("PUBLIC"))).toBe(true);
+    expect(canView(blocker, post("PUBLIC"))).toBe(false);
+  });
+
+  it("hides their circle posts even when the connection still exists", () => {
+    // A stale Connection row must not grant access. blockUser deletes connections, but
+    // this asserts the read path is safe regardless of what is left in the database.
+    const connectedButBlocked: Viewer = {
+      id: "user_cb",
+      role: "MEMBER",
+      connectionIds: new Set([OTHER]),
+      blockedIds: new Set([OTHER]),
+    };
+    expect(canView(connectedButBlocked, post("CIRCLE"))).toBe(false);
+  });
+
+  it("never hides your own work from you, whatever the block set says", () => {
+    // Defensive: a self-block should be impossible, but if one were ever written it must
+    // not lock someone out of their own profile.
+    const selfBlocked: Viewer = {
+      id: "user_self",
+      role: "MEMBER",
+      connectionIds: new Set(),
+      blockedIds: new Set(["user_self"]),
+    };
+    for (const visibility of VISIBILITY) {
+      for (const status of MODERATION_STATUS) {
+        expect(
+          canView(selfBlocked, { authorId: "user_self", visibility, moderationStatus: status }),
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("leaves everyone else visible", () => {
+    expect(canView(blocker, { authorId: "user_third", visibility: "PUBLIC", moderationStatus: "LIVE" })).toBe(true);
+  });
+
+  it("keeps visiblePostWhere in step with canView for a blocked author", () => {
+    // The important half: if the where-clause forgot the block, the feed would show a
+    // post the post page then refuses to open.
+    const where = visiblePostWhere(blocker) as Record<string, unknown>;
+    for (const visibility of VISIBILITY) {
+      for (const status of MODERATION_STATUS) {
+        const subject: ViewablePost = { authorId: OTHER, visibility, moderationStatus: status };
+        expect(matchesWhere(where, subject), `${visibility}/${status}`).toBe(
+          canView(blocker, subject),
+        );
+      }
+    }
+  });
+
+  it("still returns the viewer's own and third parties' posts through the where clause", () => {
+    const where = visiblePostWhere(blocker) as Record<string, unknown>;
+    expect(
+      matchesWhere(where, { authorId: blocker.id, visibility: "PRIVATE", moderationStatus: "PENDING" }),
+    ).toBe(true);
+    expect(
+      matchesWhere(where, { authorId: "user_third", visibility: "PUBLIC", moderationStatus: "LIVE" }),
+    ).toBe(true);
+  });
+});
+
+describe("canSeePerson", () => {
+  const blocker: Viewer = {
+    id: "user_blocker",
+    role: "MEMBER",
+    connectionIds: new Set(),
+    blockedIds: new Set(["user_other"]),
+  };
+
+  it("hides a blocked person", () => {
+    expect(canSeePerson(blocker, "user_other")).toBe(false);
+  });
+
+  it("shows everyone else, and always yourself", () => {
+    expect(canSeePerson(blocker, "user_third")).toBe(true);
+    expect(canSeePerson(blocker, blocker.id)).toBe(true);
+  });
+
+  it("shows everyone to a logged-out visitor, who has blocked nobody", () => {
+    expect(canSeePerson(null, "user_other")).toBe(true);
+  });
 });

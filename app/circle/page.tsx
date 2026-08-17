@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { Avatar } from "@/components/Avatar";
 import { CircleActions } from "@/components/CircleActions";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 /**
@@ -14,8 +14,8 @@ import { db } from "@/lib/db";
  * being the group you'd show an unfinished thing to.
  */
 export default async function CirclePage() {
-  const user = await getSessionUser();
-  if (!user) redirect("/login");
+  const [user, viewer] = await Promise.all([getSessionUser(), getViewer()]);
+  if (!user || !viewer) redirect("/login");
 
   const connections = await db.connection.findMany({
     where: { OR: [{ requesterId: user.id }, { addresseeId: user.id }] },
@@ -26,21 +26,36 @@ export default async function CirclePage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const accepted = connections.filter((c) => c.status === "ACCEPTED");
-  const incoming = connections.filter(
-    (c) => c.status === "PENDING" && c.addresseeId === user.id,
-  );
-  const outgoing = connections.filter(
-    (c) => c.status === "PENDING" && c.requesterId === user.id,
-  );
-
   const other = (c: (typeof connections)[number]) =>
     c.requesterId === user.id ? c.addressee : c.requester;
 
+  /*
+   * Belt and braces. `blockUser` deletes the connection inside the same transaction as
+   * the block, so in practice nothing here should involve a blocked person. This filter
+   * exists because the cost of being wrong is asymmetric: a stale row would put someone
+   * you blocked back in your circle list, and the row is exactly what grants access to
+   * CIRCLE posts.
+   */
+  const visible = connections.filter((c) => !viewer.blockedIds.has(other(c).id));
+
+  const accepted = visible.filter((c) => c.status === "ACCEPTED");
+  const incoming = visible.filter(
+    (c) => c.status === "PENDING" && c.addresseeId === user.id,
+  );
+  const outgoing = visible.filter(
+    (c) => c.status === "PENDING" && c.requesterId === user.id,
+  );
+
   // Anyone not already connected — a small directory, not a recommendation engine.
+  //
+  // Blocked people are excluded explicitly. Without this the directory would cheerfully
+  // suggest connecting to someone you blocked, or to someone who blocked you — which is
+  // the exact opposite of what a block is for, and the sort of place it leaks from,
+  // because this query never touches a post and so never passes through the post
+  // visibility chokepoint.
   const connectedIds = new Set(connections.map((c) => other(c).id));
   const others = await db.user.findMany({
-    where: { id: { notIn: [...connectedIds, user.id] } },
+    where: { id: { notIn: [...connectedIds, user.id, ...viewer.blockedIds] } },
     select: { id: true, handle: true, displayName: true, avatarKey: true, bio: true },
     take: 12,
     orderBy: { createdAt: "desc" },

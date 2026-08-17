@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listNotifications, markAllRead } from "@/lib/notify";
-import { timeAgo } from "@/lib/format";
+import { isoDate, readableDateTime, timeAgo } from "@/lib/format";
 
 /**
  * Notifications tell you something happened. They never tell you how you're doing.
@@ -41,6 +41,7 @@ export default async function NotificationsPage() {
           {notifications.map((n) => {
             const postId = typeof n.payload.postId === "string" ? n.payload.postId : null;
             const title = (postId ? titles.get(postId) : null) ?? null;
+            const href = destination(n.kind, n.payload);
 
             return (
               <li key={n.id} className="eu-card flex items-start gap-3 p-4">
@@ -50,15 +51,17 @@ export default async function NotificationsPage() {
                 <div className="min-w-0 flex-1">
                   <p>{describe(n.kind, n.payload, title)}</p>
                   <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                    {timeAgo(n.createdAt)}
+                    <time dateTime={isoDate(n.createdAt)} title={readableDateTime(n.createdAt)}>
+                      {timeAgo(n.createdAt)}
+                    </time>
                   </p>
-                  {postId && (
+                  {href && (
                     <Link
-                      href={`/post/${postId}`}
+                      href={href}
                       className="mt-1 inline-block text-sm font-semibold"
                       style={{ color: "var(--accent)" }}
                     >
-                      Open it
+                      {destinationLabel(n.kind)} →
                     </Link>
                   )}
                 </div>
@@ -69,6 +72,61 @@ export default async function NotificationsPage() {
       )}
     </div>
   );
+}
+
+/**
+ * Where a notification actually takes you.
+ *
+ * Not every notification is about a post, and sending them all to /post was the bug: a
+ * note someone sent you lives in Heard, a circle request lives in Circle, and a book
+ * decision lives in the reading room. Landing on the wrong page — or on no page at all —
+ * makes a notification something to dismiss rather than something to follow.
+ *
+ * Where a page can be scrolled to the exact thing, the link carries an anchor.
+ */
+function destination(kind: string, payload: Record<string, unknown>): string | null {
+  const postId = typeof payload.postId === "string" ? payload.postId : null;
+  const bookId = typeof payload.bookId === "string" ? payload.bookId : null;
+
+  switch (kind) {
+    case "LOVED":
+    case "ECHOED":
+      return postId ? `/post/${postId}` : null;
+
+    // The note itself is in Heard, not on the post — that is the whole point of Heard.
+    case "ENCOURAGED":
+      return postId ? `/heard#note-${postId}` : "/heard";
+
+    case "CONNECTION":
+      return "/circle";
+
+    case "MODERATION":
+      // A moderation decision can be about a book or a post; the payload says which.
+      if (bookId) return `/read/${bookId}`;
+      return postId ? `/post/${postId}` : null;
+
+    case "MILESTONE":
+      return "/";
+
+    default:
+      return postId ? `/post/${postId}` : null;
+  }
+}
+
+/** What the link should say, so it names where it goes rather than "Open it". */
+function destinationLabel(kind: string): string {
+  switch (kind) {
+    case "ENCOURAGED":
+      return "Read it in Heard";
+    case "CONNECTION":
+      return "Open your circle";
+    case "MILESTONE":
+      return "Go to your feed";
+    case "MODERATION":
+      return "See what happened";
+    default:
+      return "Open it";
+  }
 }
 
 function icon(kind: string): string {

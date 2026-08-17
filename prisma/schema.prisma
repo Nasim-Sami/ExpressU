@@ -13,16 +13,19 @@
 //
 // If a future feature seems to need one of these, it is the feature that is wrong.
 //
-// Dev runs on SQLite, which has no native enum or array support, so enum-ish columns are
-// Strings and list-ish columns are JSON text. The single source of truth for their allowed
-// values is lib/constants.ts — always go through the helpers there, never a bare string.
+// Runs on Postgres (Neon or Supabase both work on their free tiers, no card required).
+// Enum-ish columns are still plain Strings and list-ish columns are still JSON text, on
+// purpose — not a SQLite limitation carried over, but so dev, tests, and prod all speak
+// the same schema and so the single source of truth for allowed values stays
+// lib/constants.ts. Never write a native Postgres enum here; always go through the
+// helpers in lib/constants.ts instead of a bare string.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -69,6 +72,10 @@ model User {
   encouragementsSent   Encouragement[] @relation("EncouragementFrom")
   connectionsRequested Connection[]    @relation("ConnectionRequester")
   connectionsReceived  Connection[]    @relation("ConnectionAddressee")
+  blocksMade           Block[]         @relation("BlockBlocker")
+  blocksReceived       Block[]         @relation("BlockBlocked")
+  interviewResponses   InterviewResponse[]
+  responseLoves        ResponseLove[]
   strikes              Strike[]
   suspensions          Suspension[]    @relation("SuspensionSubject")
   suspensionsApproved  Suspension[]    @relation("SuspensionApprover")
@@ -165,15 +172,29 @@ model Entry {
   attachments    Attachment[]
   moderationRuns ModerationRun[]
   strikes        Strike[]
+  /// INTERVIEW only: the questions asked in this round.
+  questions      InterviewQuestion[]
 
   @@unique([postId, ordinal])
   @@index([postId])
 }
 
+/// Attached media, belonging to EITHER an entry or an interview answer.
+///
+/// Both foreign keys are nullable and exactly one is ever set. The alternative — a
+/// separate table for answer media — would have meant a second copy of everything that
+/// makes an upload safe: the SHA-256 and perceptual hashes, the extracted text, the
+/// processing status, the moderation pass. An answer can carry a video from a stranger,
+/// so it has to go through precisely the same machinery a post does, not a parallel one
+/// that drifts.
 model Attachment {
-  id      String @id @default(cuid())
-  entryId String
-  entry   Entry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  id      String  @id @default(cuid())
+  entryId String?
+  entry   Entry?  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  /// Set instead of entryId when this file was attached to an interview answer.
+  responseId String?
+  response   InterviewResponse? @relation(fields: [responseId], references: [id], onDelete: Cascade)
 
   /// VIDEO | AUDIO | IMAGE | PDF | DOC | TEXT
   kind      String
@@ -282,6 +303,35 @@ model Connection {
 
   @@unique([requesterId, addresseeId])
   @@index([addresseeId, status])
+}
+
+/// One person deciding they don't want anything to do with another.
+///
+/// Deliberately one row for what is a SYMMETRIC effect. If A blocks B then neither of
+/// them sees the other anywhere: not in the feed, not in search, not by opening a profile
+/// URL directly. Only A knows the block exists — B is simply never told, and sees the same
+/// "nothing here" a stranger would.
+///
+/// That asymmetry of *knowledge* with symmetry of *effect* is the point. A one-directional
+/// block, where the blocked person can still watch, is not protection; and telling B they
+/// were blocked hands them a reason to retaliate through another account.
+model Block {
+  id String @id @default(cuid())
+
+  /// The person who chose this.
+  blockerId String
+  blocker   User   @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  /// The person they no longer want to see or be seen by.
+  blockedId String
+  blocked   User   @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  // Both directions are queried on every request that builds a Viewer, so both are indexed.
+  @@index([blockerId])
+  @@index([blockedId])
 }
 
 /// One row per moderation pass, kept in full so a human reviewing a decision sees
@@ -479,4 +529,85 @@ model BookReport {
   createdAt DateTime @default(now())
 
   @@unique([bookId, reporterId])
+}
+
+/// One question inside a round of an Open Interview.
+///
+/// Questions hang off an Entry rather than off the Post, and that is the whole design:
+/// an Entry is already "a round that was added later", so a follow-up interview is the
+/// same machinery as adding a chapter to an idea. Round one asks up to three questions;
+/// a follow-up adds another entry with up to three more, and every earlier question stays
+/// answerable.
+///
+/// The cap is three per round, enforced in lib/actions/interviews.ts. Three is few enough
+/// that answering doesn't feel like homework — the limit is the feature.
+model InterviewQuestion {
+  id      String @id @default(cuid())
+  entryId String
+  entry   Entry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  /// 1, 2 or 3 within this round.
+  ordinal Int
+  text    String
+
+  createdAt DateTime @default(now())
+
+  responses InterviewResponse[]
+
+  @@unique([entryId, ordinal])
+  @@index([entryId])
+}
+
+/// One person's answer to one question.
+///
+/// Note that it carries its own `moderationStatus`. An answer is somebody else's media
+/// arriving on the interviewer's page, so it cannot inherit the interview's already-clean
+/// verdict — it is checked in its own right, by the same pipeline, before anyone but its
+/// author can read it.
+model InterviewResponse {
+  id         String            @id @default(cuid())
+  questionId String
+  question   InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  body String
+
+  /// PENDING | LIVE | BLOCKED | UNDER_REVIEW — the same ladder posts climb.
+  moderationStatus String    @default("PENDING")
+  moderatedAt      DateTime?
+  /// Set only when the answer's content actually changes, so an edit is re-checked but a
+  /// harmless row rewrite isn't. Same rule as Entry.contentUpdatedAt.
+  contentUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments Attachment[]
+  loves       ResponseLove[]
+
+  /// One answer per person per question — revisable, but not repeatable. Without this a
+  /// single person could bury a question under twenty replies.
+  @@unique([questionId, authorId])
+  @@index([questionId])
+  @@index([authorId])
+}
+
+/// A heart on somebody's answer.
+///
+/// Separate from Love, which is post-shaped, rather than making Love polymorphic — the
+/// count semantics that matter (only the author ever sees a number) are easier to keep
+/// true in a small table of its own than by loosening a heavily-tested one.
+model ResponseLove {
+  id         String            @id @default(cuid())
+  responseId String
+  response   InterviewResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([responseId, userId])
+  @@index([responseId])
 }

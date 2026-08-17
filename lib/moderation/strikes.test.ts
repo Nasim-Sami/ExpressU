@@ -1,10 +1,7 @@
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { STRIKES_BEFORE_BAN_REVIEW } from "@/lib/constants";
+import { useIsolatedSchema, type IsolatedDb } from "@/lib/test-db";
 
 /**
  * The strike ledger, against a real database.
@@ -13,32 +10,24 @@ import { STRIKES_BEFORE_BAN_REVIEW } from "@/lib/constants";
  * anybody.** Four strikes opens a review item and stops. If someone later wires
  * `applySuspension` into the worker, or removes the admin-id guard, these tests fail.
  *
- * It runs on its own throwaway SQLite file so it never touches the dev database.
+ * It runs in its own throwaway Postgres schema so it never touches the dev database.
  */
 
 let db: import("@prisma/client").PrismaClient;
 let strikes: typeof import("./strikes");
-let tempDir: string;
+let isolated: IsolatedDb;
 
 beforeAll(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "expressu-test-"));
-  const dbPath = path.join(tempDir, "test.db");
-  process.env.DATABASE_URL = `file:${dbPath}`;
+  isolated = useIsolatedSchema("strikes");
 
-  execFileSync(
-    "npx",
-    ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"],
-    { env: { ...process.env, DATABASE_URL: `file:${dbPath}` }, stdio: "pipe" },
-  );
-
-  // Imported after DATABASE_URL is set, so the client points at the throwaway file.
+  // Imported after DATABASE_URL is set, so the client points at the throwaway schema.
   ({ db } = await import("@/lib/db"));
   strikes = await import("./strikes");
 });
 
 afterAll(async () => {
   await db?.$disconnect();
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  isolated?.drop();
 });
 
 let counter = 0;

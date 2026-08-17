@@ -48,6 +48,7 @@ export function TopNav({ user }: { user: SessionUser | null }) {
                 unreachable on the device they actually use. Labels drop away below sm. */}
             <NavLink href="/" label="Home" icon={<HomeIcon />} />
             <NavLink href="/read" label="Read" icon={<BookIcon />} />
+            <NavLink href="/interviews" label="Ask" icon={<AskIcon />} />
             <NavLink href="/play" label="Play" icon={<PlayIcon />} />
             <NavLink href="/circle" label="Circle" icon={<CircleIcon />} />
             <NavLink href="/heard" label="Heard" icon={<HeardIcon />} />
@@ -126,6 +127,21 @@ function HomeIcon() {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** A question mark — open interviews. */
+function AskIcon() {
+  return (
+    <svg {...iconProps}>
+      <path
+        d="M9 8.6a3 3 0 1 1 4 2.8c-.9.3-1.4 1-1.4 1.9v.7"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+      <circle cx="11.6" cy="18" r="1.1" fill="currentColor" />
     </svg>
   );
 }

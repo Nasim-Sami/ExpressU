@@ -27,18 +27,22 @@ export default async function SearchPage({
   const { q = "", kind: rawKind } = await searchParams;
   const viewer = await getViewer();
   const kind: PostKind | undefined = rawKind && isPostKind(rawKind) ? rawKind : undefined;
+  // "People" is a tab like the post kinds, but it isn't a PostKind — finding a person to
+  // visit is its own reason to search, not a filter over posts.
+  const peopleTab = rawKind === "PEOPLE";
   const query = q.trim();
 
   // Both tabs and results come from one pass, so a tab can never promise a count the
-  // results then fail to deliver.
+  // results then fail to deliver. The People tab asks for a longer list, since there it
+  // is the result rather than one section among several.
   const { posts: allPosts, people, books } = query
-    ? await search(viewer, query)
+    ? await search(viewer, query, peopleTab ? { peopleLimit: 60 } : {})
     : { posts: [], people: [], books: [] };
   const posts = kind ? allPosts.filter((post) => post.kind === kind) : allPosts;
 
   const counts = countByKind(allPosts);
 
-  const tabHref = (next?: PostKind) => {
+  const tabHref = (next?: PostKind | "PEOPLE") => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (next) params.set("kind", next);
@@ -56,8 +60,12 @@ export default async function SearchPage({
       <div className="mt-4 flex">
         <SearchBar
           defaultValue={query}
-          hidden={{ kind }}
-          placeholder="Search for a person, an idea, a hobby, a letter…"
+          // Keeps you on whichever tab you're on when you search again — including
+          // People, which isn't a PostKind and would otherwise be dropped.
+          hidden={{ kind: peopleTab ? "PEOPLE" : kind }}
+          placeholder={
+            peopleTab ? "Search for someone by name or @handle" : "Search for a person, an idea, a hobby, a letter…"
+          }
           autoFocus={!query}
         />
       </div>
@@ -71,7 +79,21 @@ export default async function SearchPage({
       ) : (
         <>
           <nav aria-label="Filter results" className="mt-5 flex flex-wrap gap-2">
-            <Tab href={tabHref()} active={!kind} label="Everything" count={allPosts.length} />
+            <Tab
+              href={tabHref()}
+              active={!kind && !peopleTab}
+              label="Everything"
+              count={allPosts.length}
+            />
+            {/* First after Everything: looking someone up is one of the two main reasons
+                anyone opens this page, and it shouldn't be buried behind five post kinds. */}
+            <Tab
+              href={tabHref("PEOPLE")}
+              active={peopleTab}
+              label="People"
+              count={people.length}
+              icon={<PersonIcon />}
+            />
             {POST_KIND.map((k) => (
               <Tab
                 key={k}
@@ -84,10 +106,34 @@ export default async function SearchPage({
             ))}
           </nav>
 
-          {!kind && people.length > 0 && (
+          {/* The People tab: just the list, nothing else competing with it. */}
+          {peopleTab &&
+            (people.length === 0 ? (
+              <div className="eu-card mt-5 p-8 text-center">
+                <p className="font-semibold">Nobody here called “{query}”.</p>
+                <p className="mx-auto mt-2 max-w-sm text-sm" style={{ color: "var(--ink-muted)" }}>
+                  Try part of their name, or their @handle. Spelling doesn&apos;t have to be
+                  exact.
+                </p>
+              </div>
+            ) : (
+              <ul className="eu-card mt-5 divide-y" style={{ borderColor: "var(--line)" }}>
+                {people.map((person) => (
+                  <PersonRow key={person.id} person={person} />
+                ))}
+              </ul>
+            ))}
+
+          {!kind && !peopleTab && people.length > 0 && (
             <section className="mt-5">
-              <h2 className="text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--ink-faint)" }}>
+              <h2 className="flex items-center justify-between text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--ink-faint)" }}>
                 People
+                {/* Only a handful show here; this is the way to the rest. */}
+                {people.length >= 12 && (
+                  <Link href={tabHref("PEOPLE")} className="font-semibold normal-case" style={{ color: "var(--accent)" }}>
+                    See all
+                  </Link>
+                )}
               </h2>
               <ul className="eu-card mt-2 divide-y" style={{ borderColor: "var(--line)" }}>
                 {people.map((person) => (
@@ -97,7 +143,7 @@ export default async function SearchPage({
             </section>
           )}
 
-          {!kind && books.length > 0 && (
+          {!kind && !peopleTab && books.length > 0 && (
             <section className="mt-5">
               <h2 className="text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--ink-faint)" }}>
                 In the reading room
@@ -110,13 +156,16 @@ export default async function SearchPage({
             </section>
           )}
 
-          <section className="mt-5 flex flex-col gap-4">
-            {posts.length === 0 && (kind || (people.length === 0 && books.length === 0)) ? (
-              <Nothing query={query} />
-            ) : (
-              posts.map((post) => <PostCard key={post.id} post={post} />)
-            )}
-          </section>
+          {/* Posts are hidden entirely on the People tab — you asked for people. */}
+          {!peopleTab && (
+            <section className="mt-5 flex flex-col gap-4">
+              {posts.length === 0 && (kind || (people.length === 0 && books.length === 0)) ? (
+                <Nothing query={query} />
+              ) : (
+                posts.map((post) => <PostCard key={post.id} post={post} />)
+              )}
+            </section>
+          )}
         </>
       )}
     </div>
@@ -129,10 +178,18 @@ function PersonRow({ person }: { person: PersonResult }) {
       <Link href={`/u/${person.handle}`} className="flex items-center gap-3 p-3 transition-colors hover:bg-[var(--surface-sunken)]">
         <Avatar user={person} size={44} />
         <span className="min-w-0">
+          {/* The handle is always shown, never replaced by the bio. Two people can share a
+              display name; the handle is the one thing that identifies who you've found,
+              and it's often what was typed to find them. */}
           <span className="block font-semibold">{person.displayName}</span>
-          <span className="block truncate text-sm" style={{ color: "var(--ink-muted)" }}>
-            {person.bio ? person.bio : `@${person.handle}`}
+          <span className="block text-sm" style={{ color: "var(--ink-muted)" }}>
+            @{person.handle}
           </span>
+          {person.bio && (
+            <span className="mt-0.5 block truncate text-sm" style={{ color: "var(--ink-faint)" }}>
+              {person.bio}
+            </span>
+          )}
         </span>
       </Link>
     </li>
@@ -215,5 +272,20 @@ function Tab({
         {count}
       </span>
     </Link>
+  );
+}
+
+/** A single person — the People tab's mark. */
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+      <circle cx="12" cy="8.5" r="3.6" stroke="currentColor" strokeWidth="1.7" />
+      <path
+        d="M5 20c.5-3.4 3.4-5.8 7-5.8s6.5 2.4 7 5.8"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

@@ -21,6 +21,16 @@ export interface Viewer {
   role: UserRole;
   /** Ids of users this viewer has an ACCEPTED connection with, in either direction. */
   connectionIds: ReadonlySet<string>;
+  /**
+   * Everyone this viewer can no longer see, in EITHER direction — people they blocked
+   * and people who blocked them, in one set.
+   *
+   * Merging both directions here is deliberate. Every read path then needs one check
+   * rather than two, and it becomes impossible to implement "don't show me their posts"
+   * while forgetting "don't show them mine" — which is the half of blocking that actually
+   * protects someone.
+   */
+  blockedIds: ReadonlySet<string>;
 }
 
 /** The minimum a post must expose to be access-checked. */
@@ -54,6 +64,11 @@ function isPubliclyReadable(status: ModerationStatus): boolean {
 export function canView(viewer: Viewer | null, post: ViewablePost): boolean {
   // The author always sees their own work, in every state.
   if (viewer && viewer.id === post.authorId) return true;
+
+  // A block outranks everything below, including PUBLIC. Checked before visibility so a
+  // public post can't leak past it, and after the author check so a block can never hide
+  // someone's work from themselves.
+  if (viewer && viewer.blockedIds.has(post.authorId)) return false;
 
   if (!isPubliclyReadable(post.moderationStatus)) return false;
 
@@ -103,22 +118,45 @@ export function visiblePostWhere(viewer: Viewer | null) {
     };
   }
 
-  const circleAuthorIds = [...viewer.connectionIds];
+  // A block hides someone's work in both directions, so anyone blocked is excluded from
+  // the circle list too — otherwise blocking a friend would leave their circle-only posts
+  // still showing.
+  const blocked = [...viewer.blockedIds];
+  const circleAuthorIds = [...viewer.connectionIds].filter((id) => !viewer.blockedIds.has(id));
 
   return {
-    OR: [
-      // Everything the viewer wrote, whatever its state.
-      { authorId: viewer.id },
-      // Live public posts from anyone.
-      { moderationStatus: "LIVE", visibility: "PUBLIC" },
-      // Live circle posts from people they're connected with.
+    AND: [
       {
-        moderationStatus: "LIVE",
-        visibility: "CIRCLE",
-        authorId: { in: circleAuthorIds },
+        OR: [
+          // Everything the viewer wrote, whatever its state.
+          { authorId: viewer.id },
+          // Live public posts from anyone.
+          { moderationStatus: "LIVE", visibility: "PUBLIC" },
+          // Live circle posts from people they're connected with.
+          {
+            moderationStatus: "LIVE",
+            visibility: "CIRCLE",
+            authorId: { in: circleAuthorIds },
+          },
+        ],
       },
+      // Applied as a separate AND rather than folded into the branches above, so it
+      // cannot be forgotten if someone later adds a fourth way to see a post.
+      ...(blocked.length > 0 ? [{ authorId: { notIn: blocked } }] : []),
     ],
   };
+}
+
+/**
+ * Whether these two people can see each other at all.
+ *
+ * Used for profiles, search results and connection requests — the places where a *person*
+ * rather than a post is being shown. Posts go through `canView`.
+ */
+export function canSeePerson(viewer: Viewer | null, personId: string): boolean {
+  if (!viewer) return true;
+  if (viewer.id === personId) return true;
+  return !viewer.blockedIds.has(personId);
 }
 
 /**

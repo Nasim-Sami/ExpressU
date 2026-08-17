@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { pickNext } from "@/lib/moderation/claim";
 import { moderateEntry } from "@/lib/moderation/pipeline";
+import { moderateAnswer } from "@/lib/moderation/answers";
 import { maybeMilestone } from "@/lib/notify";
 
 /**
@@ -32,9 +33,32 @@ async function claimNext() {
   return pickNext(candidates);
 }
 
+/**
+ * The next interview answer needing a check.
+ *
+ * Answers are claimed by the same rule as entries — never checked, or edited since the
+ * last check — so an answer can't be rewritten past its approval any more than a post
+ * can. They are handled after entries only because a person waiting on their own post is
+ * the more visible wait; neither queue can starve the other, since each tick tries both.
+ */
+async function claimNextAnswer() {
+  const candidates = await db.interviewResponse.findMany({
+    where: { moderationStatus: { in: ["PENDING", "UNDER_REVIEW"] } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      createdAt: true,
+      contentUpdatedAt: true,
+      moderatedAt: true,
+      authorId: true,
+    },
+  });
+  return pickNext(candidates);
+}
+
 async function tick(): Promise<boolean> {
   const entry = await claimNext();
-  if (!entry) return false;
+  if (!entry) return tickAnswer();
 
   const started = Date.now();
   console.log(`[worker] moderating entry ${entry.id} (idea ${entry.post.id})`);
@@ -61,6 +85,38 @@ async function tick(): Promise<boolean> {
         kind: "ORIGINALITY_UNSURE",
         subjectId: entry.id,
         notes: `Worker error: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    });
+  }
+
+  return true;
+}
+
+/** One interview answer, checked the same way a post is. */
+async function tickAnswer(): Promise<boolean> {
+  const answer = await claimNextAnswer();
+  if (!answer) return false;
+
+  const started = Date.now();
+  console.log(`[worker] moderating interview answer ${answer.id}`);
+
+  try {
+    const verdict = await moderateAnswer(answer.id);
+    console.log(`[worker] → ${verdict} in ${Date.now() - started}ms`);
+  } catch (error) {
+    console.error(`[worker] answer ${answer.id} failed:`, error);
+    // Park it for a human rather than retrying forever against a broken upload. Note it
+    // is NOT published on failure: an unchecked answer staying invisible is the safe
+    // direction to fail in.
+    await db.interviewResponse.update({
+      where: { id: answer.id },
+      data: { moderationStatus: "UNDER_REVIEW", moderatedAt: new Date() },
+    });
+    await db.reviewItem.create({
+      data: {
+        kind: "ORIGINALITY_UNSURE",
+        subjectId: answer.id,
+        notes: `Interview answer worker error: ${error instanceof Error ? error.message : String(error)}`,
       },
     });
   }

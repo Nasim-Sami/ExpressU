@@ -2,9 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Avatar } from "@/components/Avatar";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { timeAgo } from "@/lib/format";
+import { isDistant, isoDate, readableDate, readableDateTime, timeAgo } from "@/lib/format";
 
 /**
  * Heard — every private note anyone has ever sent you.
@@ -15,11 +15,18 @@ import { timeAgo } from "@/lib/format";
  * owner can load this route, and none of it is visible on the ideas themselves.
  */
 export default async function HeardPage() {
-  const user = await getSessionUser();
-  if (!user) redirect("/login");
+  const [user, viewer] = await Promise.all([getSessionUser(), getViewer()]);
+  if (!user || !viewer) redirect("/login");
 
   const notes = await db.encouragement.findMany({
-    where: { post: { authorId: user.id } },
+    where: {
+      post: { authorId: user.id },
+      // Notes from someone you've since blocked are hidden, not deleted. Blocking
+      // shouldn't destroy kind words that were already received and may still mean
+      // something — but nor should the person you blocked keep appearing in the one
+      // place on ExpressU that exists to feel good to open.
+      ...(viewer.blockedIds.size > 0 ? { fromUserId: { notIn: [...viewer.blockedIds] } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     include: {
       preset: true,
@@ -50,7 +57,14 @@ export default async function HeardPage() {
       ) : (
         <ul className="mt-6 flex flex-col gap-3">
           {notes.map((note) => (
-            <li key={note.id} className="eu-card p-5">
+            <li
+              key={note.id}
+              // Anchored by the POST it is about, because that is what the notification
+              // knows — an "someone sent you a note" notification carries the post id, not
+              // the note id. scroll-mt keeps the sticky top bar off the note it lands on.
+              id={`note-${note.post.id}`}
+              className="eu-card scroll-mt-24 p-5"
+            >
               <p className="font-display text-lg leading-snug">
                 &ldquo;{note.preset?.text ?? note.body}&rdquo;
               </p>
@@ -60,7 +74,15 @@ export default async function HeardPage() {
                   {note.fromUser.displayName}
                 </Link>
                 <span aria-hidden="true">·</span>
-                <span>{timeAgo(note.createdAt)}</span>
+                <time dateTime={isoDate(note.createdAt)} title={readableDateTime(note.createdAt)}>
+                  {timeAgo(note.createdAt)}
+                </time>
+                {isDistant(note.createdAt) && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{readableDate(note.createdAt)}</span>
+                  </>
+                )}
                 <span aria-hidden="true">·</span>
                 <Link href={`/post/${note.post.id}`} className="hover:underline">
                   {note.post.title}

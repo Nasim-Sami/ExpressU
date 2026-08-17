@@ -51,12 +51,18 @@ export interface SearchOptions {
   authorId?: string;
   /** People are skipped when the search is already scoped to posts. */
   people?: boolean;
+  /**
+   * How many people to return. The default is a short list, because on the "everything"
+   * tab people are one section competing with posts and books. The dedicated People tab
+   * raises it — there, the list IS the result.
+   */
+  peopleLimit?: number;
 }
 
 export async function search(
   viewer: Viewer | null,
   query: string,
-  { kind, authorId, people: wantPeople }: SearchOptions = {},
+  { kind, authorId, people: wantPeople, peopleLimit = 12 }: SearchOptions = {},
 ): Promise<SearchResults> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return { people: [], posts: [], books: [] };
@@ -85,6 +91,11 @@ export async function search(
     !searchPeople
       ? Promise.resolve([])
       : db.user.findMany({
+          // Blocked in either direction means invisible in either direction: searching
+          // someone who blocked you must not reveal that they exist.
+          ...(viewer && viewer.blockedIds.size > 0
+            ? { where: { id: { notIn: [...viewer.blockedIds] } } }
+            : {}),
           // No status filter: a deleted account is gone from the table entirely, and a
           // suspended one is still a person whose profile should be findable — the pause
           // is on posting, not on existing.
@@ -109,7 +120,7 @@ export async function search(
     { text: row.displayName, weight: TITLE },
     { text: row.handle, weight: TITLE },
     { text: row.bio ?? "", weight: BODY },
-  ], 12);
+  ], peopleLimit);
 
   return {
     people,

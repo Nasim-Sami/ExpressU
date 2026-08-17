@@ -7,7 +7,7 @@ import { LoveButton } from "./LoveButton";
 import { MediaBlock } from "./MediaBlock";
 import { VisibilityBadge } from "./VisibilityBadge";
 import { authorStatusMessage } from "@/lib/visibility";
-import { isoDate, timeAgo } from "@/lib/format";
+import { isDistant, isoDate, readableDate, timeAgo } from "@/lib/format";
 import { KIND_COPY } from "@/lib/constants";
 import type { PostView } from "@/lib/posts";
 
@@ -38,7 +38,20 @@ export function PostCard({ post }: { post: PostView }) {
           <p className="flex flex-wrap items-center gap-x-2 text-sm" style={{ color: "var(--ink-muted)" }}>
             <span>@{post.author.handle}</span>
             <span aria-hidden="true">·</span>
-            <time dateTime={isoDate(post.lastEntryAt)}>{timeAgo(post.lastEntryAt)}</time>
+            {/* Relative time reads more kindly on a feed, but the real date is what you
+                need when you're looking back at your own work months later — so it's the
+                hover/long-press title and stays machine-readable in dateTime. */}
+            <time dateTime={isoDate(post.lastEntryAt)} title={readableDate(post.lastEntryAt)}>
+              {timeAgo(post.lastEntryAt)}
+            </time>
+            {/* Once something is old enough that "a while back" stops being useful, the
+                date is shown outright rather than hidden behind a hover a phone can't do. */}
+            {isDistant(post.lastEntryAt) && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{readableDate(post.lastEntryAt)}</span>
+              </>
+            )}
             {post.isAuthor && (
               <>
                 <span aria-hidden="true">·</span>

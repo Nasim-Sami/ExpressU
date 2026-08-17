@@ -99,5 +99,28 @@ export function KindIcon({
           <path d="M20.8 3.6 9.6 12.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       );
+
+    case "INTERVIEW":
+      // A question mark over an open door — a question put out to whoever wants to walk
+      // through it. Not a speech bubble: this platform has no comments, and a bubble is
+      // exactly what a comment looks like.
+      return (
+        <svg {...common}>
+          <path
+            d="M4.4 20.4V5a1.4 1.4 0 0 1 1.4-1.4h8.4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <path d="M3 20.4h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path
+            d="M16.4 8.2a2.6 2.6 0 1 1 3.4 2.5c-.7.3-1 .8-1 1.5v.6"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <circle cx="18.8" cy="16.2" r="0.9" fill="currentColor" />
+        </svg>
+      );
   }
 }

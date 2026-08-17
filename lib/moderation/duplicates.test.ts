@@ -1,8 +1,6 @@
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { useIsolatedSchema, type IsolatedDb } from "@/lib/test-db";
 
 /**
  * Who is allowed to "own" a piece of media in the duplicate index.
@@ -17,17 +15,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let db: import("@prisma/client").PrismaClient;
 let findDuplicate: typeof import("./duplicates").findDuplicate;
-let tempDir: string;
+let isolated: IsolatedDb;
 
 beforeAll(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "expressu-dup-"));
-  const dbPath = path.join(tempDir, "test.db");
-  process.env.DATABASE_URL = `file:${dbPath}`;
-
-  execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], {
-    env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
-    stdio: "pipe",
-  });
+  isolated = useIsolatedSchema("duplicates");
 
   ({ db } = await import("@/lib/db"));
   ({ findDuplicate } = await import("./duplicates"));
@@ -35,7 +26,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db?.$disconnect();
-  fs.rmSync(tempDir, { recursive: true, force: true });
+  isolated?.drop();
 });
 
 let n = 0;

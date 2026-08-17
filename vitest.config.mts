@@ -1,6 +1,21 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 
+/*
+ * Load .env into process.env before any test runs.
+ *
+ * Prisma reads .env by itself when a client is constructed, which is why the
+ * database-backed tests worked without this. But that is Prisma's private behaviour, not
+ * something process.env reflects — so any test helper that needs to READ the connection
+ * string (to derive an isolated schema from it, say) found nothing there. Loading it here
+ * makes the environment the tests see the same one the app sees.
+ */
+try {
+  process.loadEnvFile(path.resolve(import.meta.dirname, ".env"));
+} catch {
+  // No .env is fine — CI supplies real environment variables instead.
+}
+
 export default defineConfig({
   test: {
     environment: "node",

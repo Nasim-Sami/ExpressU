@@ -18,6 +18,25 @@ export async function requestConnection(targetId: string): Promise<void> {
   const user = await getSessionUser();
   if (!user || user.id === targetId) return;
 
+  /*
+   * A block stops a connection request in either direction.
+   *
+   * Checked here rather than only hidden in the UI, because the button is not the only
+   * way to reach this: the profile is a 404 for a blocked person, but a server action is
+   * a URL, and someone who kept the target's id could otherwise keep tapping on the door.
+   * Returns silently — telling them a block exists is precisely what a block avoids.
+   */
+  const blocked = await db.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: user.id, blockedId: targetId },
+        { blockerId: targetId, blockedId: user.id },
+      ],
+    },
+    select: { id: true },
+  });
+  if (blocked) return;
+
   const existing = await db.connection.findFirst({
     where: {
       OR: [

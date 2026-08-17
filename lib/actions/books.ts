@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -149,11 +150,17 @@ export async function uploadBook(
     },
   });
 
-  // Checked in the background: the uploader gets their page back straight away and a
-  // notification when it lands on the shelf.
-  void checkBook(book.id).catch(() => {
-    // A crashed check must never leave a book readable. PENDING is already the safe
-    // state, so there is nothing to undo — it simply waits for a person.
+  // Checked after the response is sent: the uploader gets their page back straight away
+  // and a notification when it lands on the shelf. `after` rather than a bare floating
+  // promise, so the work is guaranteed a chance to finish instead of racing the request
+  // teardown.
+  after(async () => {
+    try {
+      await checkBook(book.id);
+    } catch {
+      // A crashed check must never leave a book readable. PENDING is already the safe
+      // state, so there is nothing to undo — it simply waits for a person.
+    }
   });
 
   revalidatePath("/read");

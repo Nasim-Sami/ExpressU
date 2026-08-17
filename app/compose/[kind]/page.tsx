@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { KindIcon } from "@/components/KindIcon";
+import { InterviewComposer } from "@/components/InterviewComposer";
 import { PostComposer } from "@/components/PostComposer";
 import { getSessionUser, isSuspended } from "@/lib/auth";
 import { KIND_BY_SLUG, KIND_COPY, POST_KIND } from "@/lib/constants";
@@ -70,6 +71,10 @@ export default async function ComposePage({
               already shared is still here, and still yours.
             </p>
           </div>
+        ) : kind === "INTERVIEW" ? (
+          // An interview isn't a body with attachments — it's a title and a set of
+          // questions, so it gets its own composer rather than a mode of the shared one.
+          <InterviewComposer />
         ) : (
           <PostComposer kind={kind} />
         )}

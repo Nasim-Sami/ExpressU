@@ -73,6 +73,14 @@ of them, and must keep doing so.
   matters more than it looks, because a child with a story in a notebook has no PDF. Books
   are held to a stricter bar than posts: anything short of a clean verdict waits for a
   person, since a child sits and reads one for an hour.
+- **Blocking.** Withdrawing from someone entirely, and deliberately separate from reporting:
+  blocking says "not for me", reporting says "someone should look at this", and nobody should
+  have to accuse another person of wrongdoing just to stop seeing them. The effect is
+  symmetric — neither of you finds the other in the feed, in search, or by opening a profile
+  URL — but only the person who blocked knows it happened. The blocked person sees exactly
+  what a stranger sees, because being told invites retaliation through another account.
+  Enforced in `lib/visibility.ts` alongside the visibility rules, so a block outranks even a
+  PUBLIC post.
 - **Reporting.** Anyone can report a post. A report never hides anything on its own; it
   opens an item for a person to judge, so being disliked can't silence you.
 
@@ -103,11 +111,18 @@ Until then, prefix commands with `unset SSL_CERT_FILE;`.
 
 ### Setup
 
+Needs a Postgres database — Neon or Supabase both have a free tier, no card required.
+Create one, copy its connection string into `DATABASE_URL` in `.env`, then:
+
 ```bash
 npm install
 npx prisma db push
 npm run db:seed
 ```
+
+Media defaults to local disk (`STORAGE_DRIVER=fs`, fine for dev). To use S3-compatible
+storage instead — required once you deploy to a stateless host, see `.env` for the
+`S3_*` variables and how to get them from Supabase Storage.
 
 ### Run
 
@@ -288,8 +303,8 @@ npm test
   the composer needs a field for it. Worth doing before real users.
 - **Guardian accounts** aren't built. Age is self-declared at signup and drives only the
   free-text rule.
-- **Storage is local disk.** `lib/storage.ts` is written as the interface an S3 adapter would
-  implement.
+- **Storage defaults to local disk in dev.** `lib/storage.ts` also has a working S3 driver
+  (`STORAGE_DRIVER=s3`) for Supabase Storage, R2, or S3 — that's what `render.yaml` uses.
 - **Deleted files are removed from disk, but old avatars/covers replaced before this build
   may still be orphaned** in `storage/`.
 - **The hobby list is fixed in `lib/constants.ts`.** "Something else" covers the gap, but the

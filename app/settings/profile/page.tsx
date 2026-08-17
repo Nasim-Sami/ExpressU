@@ -23,6 +23,18 @@ export default async function ProfileSettingsPage() {
       <div className="mt-5">
         <ProfileEditor user={{ ...user, links: readLinks(user.links) }} />
       </div>
+
+      <div className="eu-card mt-5 flex flex-wrap items-center gap-3 p-5">
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">People you&apos;ve blocked</span>
+          <span className="block text-sm" style={{ color: "var(--ink-muted)" }}>
+            Anyone you&apos;ve blocked can&apos;t see you, and you can&apos;t see them.
+          </span>
+        </span>
+        <Link href="/settings/blocked" className="eu-btn eu-btn-quiet">
+          Manage
+        </Link>
+      </div>
     </div>
   );
 }

@@ -5,8 +5,10 @@ import { BookReportButton } from "@/components/BookReportButton";
 import { Reader } from "@/components/Reader";
 import { getViewer } from "@/lib/auth";
 import { canRead } from "@/lib/books";
+import { canSeePerson } from "@/lib/visibility";
 import { db } from "@/lib/db";
 import { findInPages } from "@/lib/pagination";
+import { isoDate, readableDate, readableDateTime } from "@/lib/format";
 
 /**
  * The reader.
@@ -41,6 +43,7 @@ export default async function ReaderPage({
       maxAge: true,
       moderationStatus: true,
       uploaderId: true,
+      createdAt: true,
       sourceKey: true,
       sourceFilename: true,
       uploader: { select: { handle: true, displayName: true } },
@@ -87,7 +90,13 @@ export default async function ReaderPage({
         <h1 className="font-display text-2xl font-semibold">{book.title}</h1>
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           {book.author} · ages {book.minAge}–{book.maxAge}
-          {book.uploader && (
+          {/*
+            A book stays on the shelf even if you've blocked whoever put it there — it is
+            usually somebody else's story, and removing it from the library would punish
+            the reader rather than protect them. What does go is the credit line, since it
+            would otherwise link to a profile that 404s for this viewer.
+          */}
+          {book.uploader && canSeePerson(viewer, book.uploaderId ?? "") && (
             <>
               {" · added by "}
               <Link href={`/u/${book.uploader.handle}`} className="hover:underline">
@@ -95,6 +104,10 @@ export default async function ReaderPage({
               </Link>
             </>
           )}
+          {" · "}
+          <time dateTime={isoDate(book.createdAt)} title={readableDateTime(book.createdAt)}>
+            {readableDate(book.createdAt)}
+          </time>
         </p>
         {book.blurb && (
           <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)" }}>

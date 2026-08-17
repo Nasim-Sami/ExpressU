@@ -6,7 +6,10 @@ import { Avatar } from "@/components/Avatar";
 import { EchoButton } from "@/components/EchoButton";
 import { EncouragementSender } from "@/components/EncouragementSender";
 import { EntryActions } from "@/components/EntryActions";
+import { DeleteInterview } from "@/components/DeleteInterview";
 import { EntryComposer } from "@/components/EntryComposer";
+import { FollowUpComposer } from "@/components/FollowUpComposer";
+import { InterviewRounds } from "@/components/InterviewRounds";
 import { KindIcon } from "@/components/KindIcon";
 import { LoveButton } from "@/components/LoveButton";
 import { MediaBlock } from "@/components/MediaBlock";
@@ -16,7 +19,8 @@ import { VisibilityEditor } from "@/components/VisibilityEditor";
 import { getSessionUser, getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { FREE_TEXT_MIN_AGE, KIND_COPY } from "@/lib/constants";
-import { isoDate, readableDate, timeAgo } from "@/lib/format";
+import { isoDate, readableDate, readableDateTime, timeAgo } from "@/lib/format";
+import { getInterview } from "@/lib/interviews";
 import { getLovers, getPost } from "@/lib/posts";
 import { authorStatusMessage } from "@/lib/visibility";
 
@@ -31,6 +35,10 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const isAuthor = post.isAuthor;
   const statusNote = isAuthor ? authorStatusMessage(post.moderationStatus) : null;
   const copy = KIND_COPY[post.kind];
+
+  // An interview's body is its questions and their answers, not the entry timeline every
+  // other kind uses — so it is loaded separately and rendered in place of that timeline.
+  const interview = post.kind === "INTERVIEW" ? await getInterview(viewer, post.id) : null;
 
   return (
     <div className="mx-auto grid max-w-5xl gap-6 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -110,6 +118,30 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           single line — so the page reads as a thing that is still going, not a thing that
           happened once.
         */}
+        {interview ? (
+          <>
+            <InterviewRounds
+              rounds={interview.rounds}
+              isInterviewer={interview.isInterviewer}
+              signedIn={Boolean(sessionUser)}
+            />
+            {interview.isInterviewer && (
+              <>
+                <FollowUpComposer postId={post.id} />
+                <div className="mt-2">
+                  <DeleteInterview
+                    postId={post.id}
+                    answerCount={interview.rounds.reduce(
+                      (total, round) =>
+                        total + round.questions.reduce((n, q) => n + q.answers.length, 0),
+                      0,
+                    )}
+                  />
+                </div>
+              </>
+            )}
+          </>
+        ) : (
         <ol className="flex flex-col gap-4">
           {post.entries.map((entry, index) => {
             const isLast = index === post.entries.length - 1;
@@ -134,8 +166,26 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
                   <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--growth)" }}>
                     {index === 0 ? copy.firstEntryLabel : `${copy.entryNoun} ${entry.ordinal}`}
                     <span className="ml-2 font-normal normal-case tracking-normal" style={{ color: "var(--ink-muted)" }}>
-                      {readableDate(entry.createdAt)}
-                      {edited && " · edited"}
+                      <time
+                        dateTime={isoDate(entry.createdAt)}
+                        title={readableDateTime(entry.createdAt)}
+                      >
+                        {readableDate(entry.createdAt)}
+                      </time>
+                      {/* When it was edited, not merely that it was. "Edited" on its own
+                          invites the question this answers, and the author is usually the
+                          one asking it about their own work. */}
+                      {edited && entry.contentUpdatedAt && (
+                        <>
+                          {" · edited "}
+                          <time
+                            dateTime={isoDate(entry.contentUpdatedAt)}
+                            title={readableDateTime(entry.contentUpdatedAt)}
+                          >
+                            {readableDate(entry.contentUpdatedAt)}
+                          </time>
+                        </>
+                      )}
                     </span>
                   </p>
 
@@ -178,8 +228,11 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
             );
           })}
         </ol>
+        )}
 
-        {isAuthor && (
+        {/* An interview grows by follow-up rounds, not by entries, so the generic
+            "add a chapter" composer is not offered for it. */}
+        {isAuthor && !interview && (
           <EntryComposer
             postId={post.id}
             kind={post.kind}

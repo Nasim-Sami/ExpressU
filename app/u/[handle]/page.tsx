@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Avatar } from "@/components/Avatar";
+import { BlockButton } from "@/components/BlockButton";
 import { ConnectButton } from "@/components/ConnectButton";
 import { ImageViewer } from "@/components/ImageViewer";
 import { KindIcon } from "@/components/KindIcon";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/constants";
 import { hostOf, readLinks } from "@/lib/links";
 import { mediaUrl } from "@/lib/media-url";
+import { canSeePerson } from "@/lib/visibility";
 
 /**
  * "Their work is kept safe inside their profile" — this page is where that promise is
@@ -58,6 +60,12 @@ export default async function ProfilePage({
     },
   });
   if (!profile) notFound();
+
+  // Blocked in either direction: the profile does not exist as far as this viewer is
+  // concerned. notFound() rather than a "you blocked this person" page on purpose — the
+  // person who was blocked gets the same 404 a made-up handle would give, so nothing
+  // confirms they were blocked at all.
+  if (!canSeePerson(viewer, profile.id)) notFound();
 
   const isOwner = sessionUser?.id === profile.id;
   const links = readLinks(profile.links);
@@ -195,11 +203,14 @@ export default async function ProfilePage({
               </>
             ) : (
               sessionUser && (
-                <ConnectButton
-                  targetId={profile.id}
-                  status={connection?.status ?? null}
-                  incoming={connection?.requesterId === profile.id}
-                />
+                <>
+                  <ConnectButton
+                    targetId={profile.id}
+                    status={connection?.status ?? null}
+                    incoming={connection?.requesterId === profile.id}
+                  />
+                  <BlockButton targetId={profile.id} displayName={profile.displayName} />
+                </>
               )
             )}
           </div>

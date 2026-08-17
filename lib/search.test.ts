@@ -19,10 +19,11 @@ import type { ModerationStatus, Visibility } from "./constants";
 const db = new PrismaClient();
 const TAG = "searchtest";
 
-const viewerFor = (id: string, connections: string[] = []): Viewer => ({
+const viewerFor = (id: string, connections: string[] = [], blocked: string[] = []): Viewer => ({
   id,
   role: "MEMBER",
   connectionIds: new Set(connections),
+  blockedIds: new Set(blocked),
 });
 
 async function makeUser(suffix: string, displayName: string, bio?: string) {
@@ -182,6 +183,27 @@ describe("what search finds", () => {
   it("does not search people from inside a section", async () => {
     const { people } = await search(viewerFor(carol.id), "alice", { kind: "IDEA" });
     expect(people).toEqual([]);
+  });
+
+  it("hides a blocked person from search entirely — profile and posts", async () => {
+    // The requirement in the user's own words: searching a blocked person's name must not
+    // turn up their profile. It has to hold in both directions, so the same assertion is
+    // made from a viewer who blocked Alice and from one Alice blocked — which are the
+    // same Viewer shape, since blockedIds merges both.
+    const blocked = viewerFor(carol.id, [], [alice.id]);
+
+    const { people, posts } = await search(blocked, "alice");
+    expect(people.map((p) => p.id)).not.toContain(alice.id);
+    expect(posts.map((p) => p.author.id)).not.toContain(alice.id);
+
+    // And her work is gone from a topic search too, not just a search for her name.
+    const byTopic = await search(blocked, "mango");
+    expect(byTopic.posts.map((p) => p.author.id)).not.toContain(alice.id);
+  });
+
+  it("still finds a blocked person for everyone else", async () => {
+    const unaffected = await search(viewerFor(bob.id), "alice");
+    expect(unaffected.people.map((p) => p.id)).toContain(alice.id);
   });
 
   it("returns nothing at all for a single letter", async () => {
