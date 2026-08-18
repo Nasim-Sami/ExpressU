@@ -32,3 +32,6 @@ models/
 .claude/
 
 .DS_Store
+# Ignore extracted Gradle distribution and temporary files created by the Android wrapper
+/android-app/gradle_tmp/
+/android-app/gradle-7.6-bin.zip
