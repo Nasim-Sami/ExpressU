@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.expressu">
+
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+
+    <application
+        android:allowBackup="true"
+        android:label="ExpressU"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        <activity android:name="com.expressu.MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name="com.expressu.HomeActivity" />
+        <activity android:name="com.expressu.SectionActivity" />
+        <activity android:name="com.expressu.AddPostActivity" />
+        <activity android:name="com.expressu.PostDetailActivity" />
+        <activity android:name="com.expressu.AddChapterActivity" />
+        <activity android:name="com.expressu.SearchActivity" />
+        <activity android:name="com.expressu.ProfileActivity" />
+        <activity android:name="com.expressu.GamesActivity" />
+        <activity android:name="com.expressu.BooksActivity" />
+    </application>
+
+</manifest>

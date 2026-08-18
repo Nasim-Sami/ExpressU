@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Title"
+        android:textSize="18sp"
+        android:paddingBottom="8dp" />
+
+    <Button
+        android:id="@+id/btn_add_chapter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Add Chapter" />
+
+    <Button
+        android:id="@+id/btn_import_media"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Import Media as Chapter" />
+
+    <Button
+        android:id="@+id/btn_delete_post"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Delete Post" />
+
+    <Button
+        android:id="@+id/btn_edit_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Edit Title" />
+
+    <ListView
+        android:id="@+id/list_entries"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+</LinearLayout>

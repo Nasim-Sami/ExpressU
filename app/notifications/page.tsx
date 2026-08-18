@@ -1,7 +1,9 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { getSessionUser } from "@/lib/auth";
+export default function NotificationsPage() {
+  // News/notifications removed for single-user app. Redirect to home.
+  redirect("/");
+}
 import { db } from "@/lib/db";
 import { listNotifications, markAllRead } from "@/lib/notify";
 import { isoDate, readableDateTime, timeAgo } from "@/lib/format";

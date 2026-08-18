@@ -48,11 +48,7 @@ export function TopNav({ user }: { user: SessionUser | null }) {
                 unreachable on the device they actually use. Labels drop away below sm. */}
             <NavLink href="/" label="Home" icon={<HomeIcon />} />
             <NavLink href="/read" label="Read" icon={<BookIcon />} />
-            <NavLink href="/interviews" label="Ask" icon={<AskIcon />} />
             <NavLink href="/play" label="Play" icon={<PlayIcon />} />
-            <NavLink href="/circle" label="Circle" icon={<CircleIcon />} />
-            <NavLink href="/heard" label="Heard" icon={<HeardIcon />} />
-            <NavLink href="/notifications" label="News" icon={<BellIcon />} />
             <ThemeToggle />
             <ShareMenu />
             <AccountMenu user={user} />

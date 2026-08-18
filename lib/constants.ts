@@ -36,7 +36,7 @@ export const VISIBILITY_HELP: Record<Visibility, string> = {
  * of a hobby are the same row with a different name, because a hobby doesn't develop,
  * it accumulates; and a letter doesn't grow at all, it gets sent again.
  */
-export const POST_KIND = ["IDEA", "MOMENT", "HOBBY", "LEARNING", "LETTER", "INTERVIEW"] as const;
+export const POST_KIND = ["IDEA", "MOMENT", "HOBBY", "LEARNING"] as const;
 export type PostKind = (typeof POST_KIND)[number];
 
 export interface KindCopy {
@@ -133,39 +133,6 @@ export const KIND_COPY: Record<PostKind, KindCopy> = {
     bodyHelp: "Half-learned counts. So does the part you got wrong first.",
     intro: "Something you're working out. Come back and add a lesson each time it moves.",
   },
-  LETTER: {
-    slug: "letter",
-    action: "Write an open letter",
-    noun: "open letter",
-    singular: "Open letter",
-    plural: "Open letters",
-    entryNoun: "Letter",
-    entryPlural: "letters",
-    firstEntryLabel: "The first letter",
-    titleLabel: "Give this a title",
-    titlePlaceholder: "Please keep the library open on Sundays",
-    bodyLabel: "Body",
-    bodyPlaceholder: "Say what you want them to know, and what you'd like them to do.",
-    bodyHelp: "Write it the way you'd say it. Plain words carry further than formal ones.",
-    intro: "Something you want said out loud, to someone with the power to act on it.",
-  },
-  INTERVIEW: {
-    slug: "interview",
-    action: "Open an interview",
-    noun: "open interview",
-    singular: "Open interview",
-    plural: "Open interviews",
-    entryNoun: "Round",
-    entryPlural: "rounds",
-    firstEntryLabel: "The first questions",
-    titleLabel: "What are you asking about?",
-    titlePlaceholder: "What did you want to be when you were seven?",
-    bodyLabel: "Why you're asking",
-    bodyPlaceholder: "A line or two of context, so people know what you're hoping to hear.",
-    bodyHelp: "Optional. The questions do most of the work.",
-    intro:
-      "Ask up to three questions and let anyone answer. You can add a follow-up round later, and every earlier question stays open.",
-  },
 };
 
 /**
@@ -175,8 +142,6 @@ export const KIND_COPY: Record<PostKind, KindCopy> = {
  * filled in; three reads as someone who actually wants to know. Follow-up rounds add
  * three more when there is more to ask.
  */
-export const MAX_INTERVIEW_QUESTIONS = 3;
-
 export const KIND_BY_SLUG: Record<string, PostKind> = Object.fromEntries(
   POST_KIND.map((kind) => [KIND_COPY[kind].slug, kind]),
 );

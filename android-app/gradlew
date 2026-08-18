@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Minimal gradlew that runs the bundled Gradle binary extracted under gradle_tmp/gradle-7.6
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUNDLED_GRADLE="$BASE_DIR/gradle_tmp/gradle-7.6/bin/gradle"
+if [ -x "$BUNDLED_GRADLE" ]; then
+  exec "$BUNDLED_GRADLE" "$@"
+fi
+# Fallback to system gradle if bundled one is missing
+exec gradle "$@"
