@@ -1,7 +1,17 @@
-# ExpressU
+# 🎨 ExpressU
 
-A place where children, adolescents, and young people share any idea, dream, or piece of
-creative work — and nobody marks it.
+<div align="center">
+
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Developer](https://img.shields.io/badge/Developer-Nasim--Sami-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Nasim-Sami)
+
+**A judgment-free creative showcase platform for young minds to express their ideas, art, and dreams without the pressure of metrics, public counts, or criticism.**
+
+</div>
 
 Every showcase platform a young person meets rewards the same three things: success,
 profitability, and realism. Ideas that don't clear that bar get a verdict, and people stop
@@ -314,3 +324,17 @@ npm test
   verdict rules, appeals). **The Claude vision call itself has not been exercised** — there
   was no API key on this machine. Set one and post the watermarked fixture at
   `/tmp/eu-fixtures/watermarked.mp4` to try it.
+
+---
+
+## 👤 Author
+
+**Nasim Sami**  
+- **GitHub:** [@Nasim-Sami](https://github.com/Nasim-Sami)  
+- **Philosophy:** Building ethical, human-centric software and robotics solutions.
+
+---
+
+## 📄 License
+
+This repository is licensed under the [MIT License](LICENSE).
